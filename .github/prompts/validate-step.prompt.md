@@ -10,13 +10,13 @@ Validate that all success criteria for the specified step are met by checking th
 
 ## Inputs
 
-**Step Number** (REQUIRED): ${input:step-number:Step number to validate (e.g., "5-0", "5-1")}
+**Step Number** (REQUIRED): ${input:step-number:Step number to validate (e.g., "1", "2", "15")}
 
 ## Instructions
 
 ### 1. Validate Input
 
-- Ensure step number is provided in format "X-Y" (e.g., "5-0", "5-1")
+- Ensure step number is provided (e.g., "1", "2", "15")
 - If not provided, STOP and ask the user for the step number
 
 ### 2. Find the Exercise Issue
@@ -37,12 +37,12 @@ gh issue view <issue-number> --comments
 
 ### 4. Locate the Step
 
-Search through the issue content to find:
+Search through the issue content (including comments) to find:
 ```
-# Step ${step-number}:
+# Step {step-number}:
 ```
 
-Extract the complete step content including all sections.
+For example, for step number "1", search for "# Step 1:". Extract the complete step content including all sections up to the next step heading or end of comment.
 
 ### 5. Extract Success Criteria
 
@@ -80,7 +80,7 @@ For each success criterion:
 Provide a structured report:
 
 ```markdown
-## Validation Report: Step ${step-number}
+## Validation Report: Step {step-number}
 
 ### Summary
 - Total Criteria: X
@@ -132,7 +132,7 @@ Provide a structured report:
 ## Example Validation
 
 ```markdown
-## Validation Report: Step 5-1
+## Validation Report: Step 5
 
 ### Summary
 - Total Criteria: 3
@@ -141,25 +141,25 @@ Provide a structured report:
 
 ### Detailed Results
 
-#### ✅ Trip creation API endpoint implemented
+#### ✅ Vacation plan model defined
 **Status**: PASSED
 **Evidence**: 
-- File exists: `packages/backend/src/routes/trips.ts`
-- POST /api/trips endpoint implemented
-- Tests pass: `npm test tripService.test.ts`
+- File exists: `packages/backend/src/models/VacationPlan.ts`
+- Interface includes all required fields
+- TypeScript types properly defined
 
-#### ✅ Tests written and passing
+#### ✅ Database schema created
 **Status**: PASSED
 **Evidence**:
-- Test file exists: `packages/backend/tests/tripService.test.ts`
-- All tests passing: 8/8
-- Coverage > 80%
+- Migration file exists: `packages/backend/migrations/001_create_vacation_plans.sql`
+- Table created with proper columns
+- Foreign key to users table configured
 
-#### ❌ Input validation with error handling
+#### ❌ Create endpoint with validation
 **Status**: FAILED
 **Issue**: Missing validation for invalid date range
 **Fix**: 
-- Add validation in `packages/backend/src/routes/trips.ts`
+- Add validation in `packages/backend/src/routes/plans.ts`
 - Check that endDate > startDate
 - Return 400 with error message if invalid
 - Add test case for this scenario
@@ -168,10 +168,10 @@ Provide a structured report:
 - [x] Step is INCOMPLETE (1 criterion not met)
 
 ### Next Steps
-1. Add date range validation to trip creation endpoint
+1. Add date range validation to plan creation endpoint
 2. Add test for invalid date range
-3. Run tests to verify: `npm test`
-4. Re-run `/validate-step 5-1` to confirm
+3. Run tests to verify: `npm test --workspace=backend`
+4. Re-run `/validate-step 5` to confirm
 ```
 
 ## Notes
