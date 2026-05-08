@@ -30,8 +30,9 @@ gh issue view <issue-number> --comments
 
 ### 3. Parse Step Instructions
 
-- Locate the latest step in the issue comments
-- Identify all `:keyboard: Activity:` sections in that step
+- Look through the issue body and comments for step instructions
+- Steps are formatted with headings like "# Step 1:", "# Step 2:", etc.
+- Identify all `:keyboard: Activity:` sections within the current step
 - Extract the specific instructions for each activity
 
 ### 4. Execute Activities Systematically
@@ -91,6 +92,8 @@ Provide this command:
 
 - This prompt uses the `tdd-developer` agent automatically
 - Inherits gh CLI knowledge from `.github/copilot-instructions.md`
+- Steps are posted as comments on the main exercise issue (see Workflow Utilities)
+- The step markdown files in `.github/steps/` are reference templates
 - Focus on TDD: test first, code second
 - Keep changes incremental and well-tested
 - Separate concerns: implementation here, UI tests in `/create-ui-tests`, validation in `/validate-step`
