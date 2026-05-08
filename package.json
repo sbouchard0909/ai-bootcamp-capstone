@@ -1,0 +1,26 @@
+{
+  "name": "ai-bootcamp-capstone",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Full-stack travel planning application - AI Bootcamp Capstone Project",
+  "workspaces": [
+    "packages/backend",
+    "packages/frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
+    "start": "concurrently \"npm start --workspace=backend\" \"npm start --workspace=frontend\"",
+    "test": "npm test --workspaces",
+    "test:ui": "npm run test:ui --workspace=frontend",
+    "test:ui:install": "npm run test:ui:install --workspace=frontend",
+    "lint": "npm run lint --workspaces",
+    "build": "npm run build --workspaces"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
