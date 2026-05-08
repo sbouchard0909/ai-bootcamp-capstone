@@ -60,6 +60,17 @@ Use the appropriate specialized agent for each task:
 - **code-reviewer**: Addressing lint errors and code quality improvements
 - **test-engineer**: Owns all Playwright UI test authoring/execution, failure triage, and isolation checks
 
+## Memory System
+
+- **Persistent Memory**: This file (.github/copilot-instructions.md) contains foundational principles and workflows
+- **Working Memory**: .github/memory/ directory contains discoveries and patterns
+- During active development, take notes in .github/memory/scratch/working-notes.md (not committed)
+- At end of session, summarize key findings into .github/memory/session-notes.md (committed)
+- Document recurring code patterns in .github/memory/patterns-discovered.md (committed)
+- Reference these files when providing context-aware suggestions
+
+For detailed guidance on using the memory system, see [.github/memory/README.md](.github/memory/README.md).
+
 ## Workflow Utilities
 
 GitHub CLI commands for workflow automation (available to all modes):
