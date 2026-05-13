@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { dashboardService } from '../src/services/dashboardService';
-import { api } from '../src/services/api';
+import api from '../src/services/api';
 
 vi.mock('../src/services/api');
 
@@ -40,11 +40,16 @@ describe('dashboardService', () => {
         },
       };
 
-      vi.mocked(api.get).mockResolvedValue(mockDashboardData);
+      vi.mocked(api.get).mockResolvedValue({
+        data: {
+          data: mockDashboardData,
+          timestamp: '2026-01-01T00:00:00.000Z',
+        },
+      } as never);
 
       const result = await dashboardService.getDashboard();
 
-      expect(api.get).toHaveBeenCalledWith('/dashboard');
+      expect(api.get).toHaveBeenCalledWith('/api/v1/dashboard');
       expect(result).toEqual(mockDashboardData);
     });
 
@@ -68,7 +73,12 @@ describe('dashboardService', () => {
         },
       };
 
-      vi.mocked(api.get).mockResolvedValue(mockEmptyData);
+      vi.mocked(api.get).mockResolvedValue({
+        data: {
+          data: mockEmptyData,
+          timestamp: '2026-01-01T00:00:00.000Z',
+        },
+      } as never);
 
       const result = await dashboardService.getDashboard();
 
