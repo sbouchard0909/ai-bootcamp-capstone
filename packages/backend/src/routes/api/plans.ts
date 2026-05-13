@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response, Router } from 'express';
 import { ACTIVITY_CATEGORIES, Activity, ActivityCategory } from '../../models/Activity';
+import { UpdateActivityInput } from '../../models/Activity';
 import {
   VACATION_PLAN_STATUSES,
   VacationPlan,
@@ -13,9 +14,13 @@ import {
   deleteActivityByIdAndPlanId,
   findActivityByIdAndPlanId,
   getActivitiesByPlanId,
-  getTotalActivityCostByPlanId,
   updateActivityByIdAndPlanId,
 } from '../../utils/activityDb';
+import {
+  buildBudgetSummary,
+  getCostByDate,
+  getMostExpensiveActivities,
+} from '../../utils/budgetService';
 import {
   createVacationPlan,
   deleteVacationPlanById,
@@ -122,6 +127,26 @@ function withDuration(plan: VacationPlan): VacationPlan & { durationDays: number
   return {
     ...plan,
     durationDays: getDurationDays(plan.startDate, plan.endDate),
+  };
+}
+
+function withBudget(plan: VacationPlan): VacationPlan & {
+  durationDays: number;
+  totalSpent: number;
+  remainingBudget: number;
+  budgetUtilization: number;
+  costByCategory: Record<string, number>;
+  warnings: string[];
+} {
+  const budget = buildBudgetSummary(plan.id, plan.budget);
+
+  return {
+    ...withDuration(plan),
+    totalSpent: budget.totalSpent,
+    remainingBudget: budget.remainingBudget,
+    budgetUtilization: budget.budgetUtilization,
+    costByCategory: budget.costByCategory,
+    warnings: budget.warnings,
   };
 }
 
@@ -300,7 +325,7 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
       throw new AppError('Authentication token is required', 401);
     }
 
-    const plans = getVacationPlansByUserId(req.user.userId).map(withDuration);
+    const plans = getVacationPlansByUserId(req.user.userId).map(withBudget);
     return sendSuccess(res, { plans }, 200);
   } catch (error) {
     next(error);
@@ -341,7 +366,9 @@ router.post('/:planId/activities', (req: Request, res: Response, next: NextFunct
 
     touchVacationPlanUpdatedAt(plan.id);
 
-    return sendSuccess(res, { activity }, 201);
+    const budget = buildBudgetSummary(plan.id, plan.budget);
+
+    return sendSuccess(res, { activity, warnings: budget.warnings }, 201);
   } catch (error) {
     next(error);
   }
@@ -356,9 +383,21 @@ router.get('/:planId/activities', (req: Request, res: Response, next: NextFuncti
     const plan = ensurePlanAccess(req.params.planId, req.user.userId);
     const activities = getActivitiesByPlanId(plan.id);
     const groupedByDate = groupActivitiesByDate(activities);
-    const totalCost = getTotalActivityCostByPlanId(plan.id);
+    const budget = buildBudgetSummary(plan.id, plan.budget);
 
-    return sendSuccess(res, { activities, groupedByDate, totalCost }, 200);
+    return sendSuccess(
+      res,
+      {
+        activities,
+        groupedByDate,
+        totalCost: budget.totalSpent,
+        remainingBudget: budget.remainingBudget,
+        budgetUtilization: budget.budgetUtilization,
+        costByCategory: budget.costByCategory,
+        warnings: budget.warnings,
+      },
+      200
+    );
   } catch (error) {
     next(error);
   }
@@ -400,16 +439,41 @@ router.put('/:planId/activities/:activityId', (req: Request, res: Response, next
 
     validateUpdateActivityPayload(sanitizedUpdates, plan, existing);
 
-    const updated = updateActivityByIdAndPlanId(req.params.activityId, plan.id, {
-      name: sanitizedUpdates.name as string | undefined,
-      date: sanitizedUpdates.date as string | undefined,
-      startTime: sanitizedUpdates.startTime as string | null | undefined,
-      endTime: sanitizedUpdates.endTime as string | null | undefined,
-      cost: sanitizedUpdates.cost as number | undefined,
-      category: sanitizedUpdates.category as ActivityCategory | undefined,
-      description: sanitizedUpdates.description as string | undefined,
-      location: sanitizedUpdates.location as string | undefined,
-    });
+    const updateInput: UpdateActivityInput = {};
+
+    if (sanitizedUpdates.name !== undefined) {
+      updateInput.name = sanitizedUpdates.name as string;
+    }
+
+    if (sanitizedUpdates.date !== undefined) {
+      updateInput.date = sanitizedUpdates.date as string;
+    }
+
+    if (sanitizedUpdates.startTime !== undefined) {
+      updateInput.startTime = sanitizedUpdates.startTime as string | null;
+    }
+
+    if (sanitizedUpdates.endTime !== undefined) {
+      updateInput.endTime = sanitizedUpdates.endTime as string | null;
+    }
+
+    if (sanitizedUpdates.cost !== undefined) {
+      updateInput.cost = sanitizedUpdates.cost as number;
+    }
+
+    if (sanitizedUpdates.category !== undefined) {
+      updateInput.category = sanitizedUpdates.category as ActivityCategory;
+    }
+
+    if (sanitizedUpdates.description !== undefined) {
+      updateInput.description = sanitizedUpdates.description as string;
+    }
+
+    if (sanitizedUpdates.location !== undefined) {
+      updateInput.location = sanitizedUpdates.location as string;
+    }
+
+    const updated = updateActivityByIdAndPlanId(req.params.activityId, plan.id, updateInput);
 
     if (!updated) {
       throw new AppError('Activity not found', 404);
@@ -417,7 +481,10 @@ router.put('/:planId/activities/:activityId', (req: Request, res: Response, next
 
     touchVacationPlanUpdatedAt(plan.id);
 
-    return sendSuccess(res, { activity: updated }, 200);
+    const refreshedPlan = ensurePlanAccess(plan.id, req.user.userId);
+    const budget = buildBudgetSummary(refreshedPlan.id, refreshedPlan.budget);
+
+    return sendSuccess(res, { activity: updated, warnings: budget.warnings }, 200);
   } catch (error) {
     next(error);
   }
@@ -456,7 +523,35 @@ router.get('/:id', (req: Request, res: Response, next: NextFunction) => {
     }
 
     assertOwnership(plan, req.user.userId);
-    return sendSuccess(res, { plan: withDuration(plan) }, 200);
+    return sendSuccess(res, { plan: withBudget(plan) }, 200);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id/budget', (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) {
+      throw new AppError('Authentication token is required', 401);
+    }
+
+    const plan = ensurePlanAccess(req.params.id, req.user.userId);
+    const budget = buildBudgetSummary(plan.id, plan.budget);
+
+    return sendSuccess(
+      res,
+      {
+        budget: plan.budget,
+        totalSpent: budget.totalSpent,
+        remainingBudget: budget.remainingBudget,
+        budgetUtilization: budget.budgetUtilization,
+        costByCategory: budget.costByCategory,
+        costByDate: getCostByDate(plan.id),
+        warnings: budget.warnings,
+        mostExpensiveActivities: getMostExpensiveActivities(plan.id),
+      },
+      200
+    );
   } catch (error) {
     next(error);
   }

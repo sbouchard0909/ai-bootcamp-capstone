@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ActivitiesList } from '../components/ActivitiesList';
 import { ActivityFormModal } from '../components/ActivityFormModal';
+import { BudgetOverview } from '../components/BudgetOverview';
 import { DeleteConfirmationDialog } from '../components/DeleteConfirmationDialog';
 import { ActivitiesProvider, useActivities } from '../context/ActivitiesContext';
 import { usePlans } from '../context/PlansContext';
+import { budgetService } from '../services/budgetService';
 import { plansService } from '../services/plansService';
 import { Activity, CreateActivityData, UpdateActivityData } from '../types/activities';
-import { VacationPlan } from '../types/plans';
+import { BudgetDetails, VacationPlan } from '../types/plans';
 
 function formatDate(date: string): string {
   return new Intl.DateTimeFormat('en-US', {
@@ -85,13 +87,44 @@ function PlanDetailsContent({ plan }: { plan: VacationPlan }) {
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [deletingActivity, setDeletingActivity] = useState<Activity | null>(null);
+  const [budgetDetails, setBudgetDetails] = useState<BudgetDetails | null>(null);
+  const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [alertDismissed, setAlertDismissed] = useState(false);
 
   useEffect(() => {
     void fetchActivities();
   }, [fetchActivities]);
 
-  const remaining = plan.budget - totalCost;
-  const isOverBudget = remaining < 0;
+  const fallbackBudget = useMemo<BudgetDetails>(
+    () => ({
+      totalBudget: plan.budget,
+      totalSpent: totalCost,
+      remainingBudget: plan.budget - totalCost,
+      budgetUtilization: plan.budget > 0 ? Number(((totalCost / plan.budget) * 100).toFixed(2)) : 0,
+      costByCategory: {},
+      costByDate: {},
+      warnings: [],
+      isOverBudget: plan.budget - totalCost < 0,
+    }),
+    [plan.budget, totalCost]
+  );
+
+  const loadBudget = useCallback(async () => {
+    try {
+      const details = await budgetService.getBudgetDetails(plan.id);
+      setBudgetDetails(details);
+      setBudgetError(null);
+      setAlertDismissed(false);
+    } catch (_error) {
+      setBudgetError('Unable to load detailed budget insights');
+    }
+  }, [plan.id]);
+
+  useEffect(() => {
+    void loadBudget();
+  }, [loadBudget, activities]);
+
+  const activeBudget = budgetDetails ?? fallbackBudget;
 
   const handleDeletePlan = async () => {
     await deletePlan(plan.id);
@@ -158,30 +191,13 @@ function PlanDetailsContent({ plan }: { plan: VacationPlan }) {
           </div>
         )}
 
-        <div className="mt-6 pt-6 border-t">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-lg">Budget</h2>
-          </div>
-          <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <dt className="text-gray-500 text-sm">Total Activities Cost</dt>
-              <dd>{formatCurrency(totalCost)}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500 text-sm">Remaining Budget</dt>
-              <dd className={isOverBudget ? 'text-red-600 font-semibold' : ''}>
-                {formatCurrency(remaining)}
-              </dd>
-            </div>
-            {isOverBudget && (
-              <div>
-                <span className="inline-block px-2 py-1 bg-red-100 text-red-700 text-sm rounded font-medium">
-                  Over budget
-                </span>
-              </div>
-            )}
-          </dl>
-        </div>
+        <BudgetOverview
+          budget={activeBudget}
+          alertDismissed={alertDismissed}
+          onDismissAlert={() => setAlertDismissed(true)}
+        />
+
+        {budgetError && <p className="mt-3 text-sm text-amber-700">{budgetError}</p>}
 
         <div className="mt-6 pt-6 border-t">
           <div className="flex items-center justify-between mb-4">
@@ -244,6 +260,8 @@ function PlanDetailsContent({ plan }: { plan: VacationPlan }) {
           activity={editingActivity ?? undefined}
           planStartDate={plan.startDate}
           planEndDate={plan.endDate}
+          remainingBudget={activeBudget.remainingBudget}
+          currentActivityCost={editingActivity?.cost}
           onSubmit={handleActivitySubmit}
           onCancel={() => { setShowActivityForm(false); setEditingActivity(null); }}
         />

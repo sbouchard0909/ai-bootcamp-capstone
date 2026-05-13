@@ -27,6 +27,12 @@ export function initializeActivitiesTable(): void {
 
     CREATE INDEX IF NOT EXISTS idx_activities_date
       ON activities(date);
+
+    CREATE INDEX IF NOT EXISTS idx_activities_plan_category
+      ON activities(planId, category);
+
+    CREATE INDEX IF NOT EXISTS idx_activities_plan_date
+      ON activities(planId, date);
   `);
 }
 
@@ -169,4 +175,50 @@ export function getTotalActivityCostByPlanId(planId: string): number {
 
   const row = stmt.get(planId) as { total: number };
   return row.total;
+}
+
+export function getActivityCostByCategory(planId: string): Record<string, number> {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    SELECT category, COALESCE(SUM(cost), 0) as total
+    FROM activities
+    WHERE planId = ?
+    GROUP BY category
+  `);
+
+  const rows = stmt.all(planId) as Array<{ category: string; total: number }>;
+  return rows.reduce<Record<string, number>>((acc, row) => {
+    acc[row.category] = row.total;
+    return acc;
+  }, {});
+}
+
+export function getActivityCostByDate(planId: string): Record<string, number> {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    SELECT date, COALESCE(SUM(cost), 0) as total
+    FROM activities
+    WHERE planId = ?
+    GROUP BY date
+    ORDER BY date ASC
+  `);
+
+  const rows = stmt.all(planId) as Array<{ date: string; total: number }>;
+  return rows.reduce<Record<string, number>>((acc, row) => {
+    acc[row.date] = row.total;
+    return acc;
+  }, {});
+}
+
+export function getMostExpensiveActivitiesByPlanId(planId: string, limit = 5): Activity[] {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    SELECT *
+    FROM activities
+    WHERE planId = ?
+    ORDER BY cost DESC, date ASC, createdAt ASC
+    LIMIT ?
+  `);
+
+  return stmt.all(planId, limit) as Activity[];
 }

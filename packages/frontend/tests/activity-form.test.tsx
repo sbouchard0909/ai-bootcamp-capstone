@@ -125,6 +125,54 @@ describe('ActivityFormModal', () => {
         });
       });
     });
+
+    it('shows current and projected remaining budget', async () => {
+      render(
+        <ActivityFormModal
+          planStartDate={planStartDate}
+          planEndDate={planEndDate}
+          remainingBudget={500}
+          onSubmit={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      );
+
+      expect(screen.getByText(/current remaining budget/i)).toBeInTheDocument();
+      expect(screen.getAllByText('$500').length).toBeGreaterThan(0);
+
+      const costInput = screen.getByLabelText(/cost/i);
+      await userEvent.clear(costInput);
+      await userEvent.type(costInput, '125');
+
+      await waitFor(() => {
+        expect(screen.getByText('$375')).toBeInTheDocument();
+      });
+    });
+
+    it('shows warning when projected remaining budget falls below zero', async () => {
+      render(
+        <ActivityFormModal
+          planStartDate={planStartDate}
+          planEndDate={planEndDate}
+          remainingBudget={50}
+          onSubmit={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      );
+
+      const nameInput = screen.getByLabelText(/name/i);
+      const costInput = screen.getByLabelText(/cost/i);
+
+      await userEvent.type(nameInput, 'Expensive item');
+      await userEvent.clear(costInput);
+      await userEvent.type(costInput, '120');
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(/will exceed your budget/i);
+      });
+
+      expect(screen.getByRole('button', { name: /save/i })).toBeEnabled();
+    });
   });
 
   describe('edit mode', () => {
