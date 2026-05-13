@@ -5,11 +5,29 @@ interface ActivityFormModalProps {
   activity?: Activity;
   planStartDate: string;
   planEndDate: string;
+  remainingBudget?: number;
+  currentActivityCost?: number;
   onSubmit: (data: CreateActivityData | UpdateActivityData) => Promise<void>;
   onCancel: () => void;
 }
 
-export function ActivityFormModal({ activity, planStartDate, planEndDate, onSubmit, onCancel }: ActivityFormModalProps) {
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+export function ActivityFormModal({
+  activity,
+  planStartDate,
+  planEndDate,
+  remainingBudget,
+  currentActivityCost,
+  onSubmit,
+  onCancel,
+}: ActivityFormModalProps) {
   const [name, setName] = useState(activity?.name || '');
   const [date, setDate] = useState(activity?.date || '');
   const [startTime, setStartTime] = useState(activity?.startTime || '');
@@ -28,6 +46,13 @@ export function ActivityFormModal({ activity, planStartDate, planEndDate, onSubm
 
   const hasErrors = Boolean(nameError || costError || timeError);
   const canSubmit = name.trim() !== '' && !hasErrors;
+
+  const currentRemaining = remainingBudget ?? null;
+  const editCredit = activity ? (currentActivityCost ?? activity.cost ?? 0) : 0;
+  const projectedRemaining =
+    currentRemaining === null
+      ? null
+      : Number((currentRemaining + editCredit - costNum).toFixed(2));
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -176,6 +201,25 @@ export function ActivityFormModal({ activity, planStartDate, planEndDate, onSubm
                 />
               </div>
             </div>
+
+            {currentRemaining !== null && (
+              <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+                <p>Current remaining budget: <span className="font-medium">{formatCurrency(currentRemaining)}</span></p>
+                {projectedRemaining !== null && (
+                  <p>
+                    Remaining after this activity:{' '}
+                    <span className={`font-medium ${projectedRemaining < 0 ? 'text-red-600' : ''}`}>
+                      {formatCurrency(projectedRemaining)}
+                    </span>
+                  </p>
+                )}
+                {projectedRemaining !== null && projectedRemaining < 0 && (
+                  <p role="alert" className="text-red-600 mt-1">
+                    This activity will exceed your budget by {formatCurrency(Math.abs(projectedRemaining))}.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div>
               <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">

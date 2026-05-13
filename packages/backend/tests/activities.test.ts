@@ -229,6 +229,60 @@ describe('Activities API', () => {
 
       expect(response.status).toBe(401);
     });
+
+    it('includes warning when activity reaches 80% budget utilization', async () => {
+      const lowBudgetPlan = await request(app)
+        .post('/api/v1/plans')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          name: 'Low Budget Plan',
+          destination: 'Rome',
+          startDate: ownerPlanStartDate,
+          endDate: ownerPlanEndDate,
+          budget: 100,
+        });
+
+      const response = await request(app)
+        .post(`/api/v1/plans/${lowBudgetPlan.body.data.plan.id}/activities`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          name: 'Big Expense',
+          date: isoDateFromNow(22),
+          cost: 80,
+          category: 'other',
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.body.data.warnings).toContain('Budget usage has reached 80% or more');
+      expect(response.body.data.warnings).not.toContain('Plan is over budget');
+    });
+
+    it('includes warning but still creates activity when over budget', async () => {
+      const lowBudgetPlan = await request(app)
+        .post('/api/v1/plans')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          name: 'Over Budget Plan',
+          destination: 'Rome',
+          startDate: ownerPlanStartDate,
+          endDate: ownerPlanEndDate,
+          budget: 100,
+        });
+
+      const response = await request(app)
+        .post(`/api/v1/plans/${lowBudgetPlan.body.data.plan.id}/activities`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          name: 'Very Big Expense',
+          date: isoDateFromNow(22),
+          cost: 125,
+          category: 'other',
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.body.data.activity).toHaveProperty('id');
+      expect(response.body.data.warnings).toContain('Plan is over budget');
+    });
   });
 
   describe('GET /api/v1/plans/:planId/activities', () => {
@@ -363,6 +417,32 @@ describe('Activities API', () => {
 
       expect(response.status).toBe(404);
     });
+
+    it('includes over budget warning when update increases spend beyond budget', async () => {
+      const lowBudgetPlan = await request(app)
+        .post('/api/v1/plans')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          name: 'Update Warning Plan',
+          destination: 'Rome',
+          startDate: ownerPlanStartDate,
+          endDate: ownerPlanEndDate,
+          budget: 100,
+        });
+
+      const create = await request(app)
+        .post(`/api/v1/plans/${lowBudgetPlan.body.data.plan.id}/activities`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Adjustable', date: isoDateFromNow(22), cost: 40, category: 'other' });
+
+      const response = await request(app)
+        .put(`/api/v1/plans/${lowBudgetPlan.body.data.plan.id}/activities/${create.body.data.activity.id}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ cost: 130 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.warnings).toContain('Plan is over budget');
+    });
   });
 
   describe('DELETE /api/v1/plans/:planId/activities/:id', () => {
@@ -407,6 +487,52 @@ describe('Activities API', () => {
         .delete(`/api/v1/plans/${ownerPlanId}/activities/not-real`);
 
       expect(response.status).toBe(401);
+    });
+
+    it('recalculates budget after deleting an activity', async () => {
+      const budgetPlan = await request(app)
+        .post('/api/v1/plans')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          name: 'Delete Recalc Plan',
+          destination: 'Rome',
+          startDate: ownerPlanStartDate,
+          endDate: ownerPlanEndDate,
+          budget: 200,
+        });
+
+      const planId = budgetPlan.body.data.plan.id;
+
+      const first = await request(app)
+        .post(`/api/v1/plans/${planId}/activities`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'First', date: isoDateFromNow(22), cost: 120, category: 'other' });
+
+      await request(app)
+        .post(`/api/v1/plans/${planId}/activities`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Second', date: isoDateFromNow(23), cost: 70, category: 'other' });
+
+      const beforeDelete = await request(app)
+        .get(`/api/v1/plans/${planId}`)
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+      expect(beforeDelete.body.data.plan.totalSpent).toBe(190);
+      expect(beforeDelete.body.data.plan.remainingBudget).toBe(10);
+
+      const deleteResponse = await request(app)
+        .delete(`/api/v1/plans/${planId}/activities/${first.body.data.activity.id}`)
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+      expect(deleteResponse.status).toBe(204);
+
+      const afterDelete = await request(app)
+        .get(`/api/v1/plans/${planId}`)
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+      expect(afterDelete.body.data.plan.totalSpent).toBe(70);
+      expect(afterDelete.body.data.plan.remainingBudget).toBe(130);
+      expect(afterDelete.body.data.plan.budgetUtilization).toBe(35);
     });
   });
 

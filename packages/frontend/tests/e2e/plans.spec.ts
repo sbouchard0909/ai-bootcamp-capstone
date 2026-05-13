@@ -106,6 +106,68 @@ async function installPlansApiMocks(page: Page, initialPlans: PlanRecord[]) {
     await route.fallback();
   });
 
+  await page.route('**/api/v1/plans/*/activities', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          activities: [],
+          groupedByDate: {},
+          totalCost: 0,
+          remainingBudget: 0,
+          budgetUtilization: 0,
+          costByCategory: {},
+          warnings: [],
+        },
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  });
+
+  await page.route('**/api/v1/plans/*/budget', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+
+    const urlParts = route.request().url().split('/');
+    const planId = urlParts[urlParts.length - 2];
+    const existing = plans.find((plan) => plan.id === planId);
+
+    if (!existing) {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { message: 'Plan not found', status: 404 } }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          budget: existing.budget,
+          totalSpent: 0,
+          remainingBudget: existing.budget,
+          budgetUtilization: 0,
+          costByCategory: {},
+          costByDate: {},
+          warnings: [],
+          mostExpensiveActivities: [],
+        },
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  });
+
   await page.route('**/api/v1/plans/*', async (route) => {
     const method = route.request().method();
     const id = route.request().url().split('/').pop() as string;
@@ -245,7 +307,7 @@ test('edit existing plan and see updates', async ({ page }) => {
   await page.getByRole('button', { name: 'Save Changes' }).click();
 
   await expect(page.getByRole('heading', { name: 'City Tour Updated' })).toBeVisible();
-  await expect(page.getByText('$2,600')).toBeVisible();
+  await expect(page.getByText('$2,600').first()).toBeVisible();
 });
 
 test('delete plan with confirmation', async ({ page }) => {

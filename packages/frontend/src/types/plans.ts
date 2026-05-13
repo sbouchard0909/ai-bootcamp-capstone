@@ -19,8 +19,24 @@ export interface VacationPlan {
   description?: string | null;
   status: PlanStatus;
   durationDays?: number;
+  totalSpent?: number;
+  remainingBudget?: number;
+  budgetUtilization?: number;
+  costByCategory?: Record<string, number>;
+  warnings?: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface BudgetDetails {
+  totalBudget: number;
+  totalSpent: number;
+  remainingBudget: number;
+  budgetUtilization: number;
+  costByCategory: Record<string, number>;
+  costByDate: Record<string, number>;
+  warnings: string[];
+  isOverBudget: boolean;
 }
 
 export interface CreatePlanData {
