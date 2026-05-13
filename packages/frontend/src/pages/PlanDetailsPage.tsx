@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ActivitiesList } from '../components/ActivitiesList';
+import { ActivityFormModal } from '../components/ActivityFormModal';
 import { DeleteConfirmationDialog } from '../components/DeleteConfirmationDialog';
+import { ActivitiesProvider, useActivities } from '../context/ActivitiesContext';
 import { usePlans } from '../context/PlansContext';
 import { plansService } from '../services/plansService';
+import { Activity, CreateActivityData, UpdateActivityData } from '../types/activities';
 import { VacationPlan } from '../types/plans';
 
 function formatDate(date: string): string {
@@ -23,13 +27,10 @@ function formatCurrency(value: number): string {
 
 export function PlanDetailsPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
-  const { deletePlan } = usePlans();
 
   const [plan, setPlan] = useState<VacationPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -55,15 +56,6 @@ export function PlanDetailsPage() {
     void loadPlan();
   }, [id]);
 
-  const onDelete = async () => {
-    if (!plan) {
-      return;
-    }
-
-    await deletePlan(plan.id);
-    navigate('/plans');
-  };
-
   if (loading) {
     return <div className="max-w-4xl mx-auto p-6">Loading plan...</div>;
   }
@@ -76,6 +68,56 @@ export function PlanDetailsPage() {
       </div>
     );
   }
+
+  return (
+    <ActivitiesProvider planId={plan.id}>
+      <PlanDetailsContent plan={plan} />
+    </ActivitiesProvider>
+  );
+}
+
+function PlanDetailsContent({ plan }: { plan: VacationPlan }) {
+  const navigate = useNavigate();
+  const { deletePlan } = usePlans();
+  const { activities, totalCost, fetchActivities, createActivity, updateActivity, deleteActivity } = useActivities();
+
+  const [showDeletePlanConfirm, setShowDeletePlanConfirm] = useState(false);
+  const [showActivityForm, setShowActivityForm] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+  const [deletingActivity, setDeletingActivity] = useState<Activity | null>(null);
+
+  useEffect(() => {
+    void fetchActivities();
+  }, [fetchActivities]);
+
+  const remaining = plan.budget - totalCost;
+  const isOverBudget = remaining < 0;
+
+  const handleDeletePlan = async () => {
+    await deletePlan(plan.id);
+    navigate('/plans');
+  };
+
+  const handleActivitySubmit = async (data: CreateActivityData | UpdateActivityData) => {
+    if (editingActivity) {
+      await updateActivity(editingActivity.id, data as UpdateActivityData);
+    } else {
+      await createActivity(data as CreateActivityData);
+    }
+    setShowActivityForm(false);
+    setEditingActivity(null);
+  };
+
+  const handleEditActivity = (activity: Activity) => {
+    setEditingActivity(activity);
+    setShowActivityForm(true);
+  };
+
+  const handleDeleteActivity = async () => {
+    if (!deletingActivity) return;
+    await deleteActivity(deletingActivity.id);
+    setDeletingActivity(null);
+  };
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -117,8 +159,46 @@ export function PlanDetailsPage() {
         )}
 
         <div className="mt-6 pt-6 border-t">
-          <h2 className="font-semibold">Activities</h2>
-          <p className="text-gray-600 mt-1">Activity management is coming in a later step.</p>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-lg">Budget</h2>
+          </div>
+          <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <dt className="text-gray-500 text-sm">Total Activities Cost</dt>
+              <dd>{formatCurrency(totalCost)}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500 text-sm">Remaining Budget</dt>
+              <dd className={isOverBudget ? 'text-red-600 font-semibold' : ''}>
+                {formatCurrency(remaining)}
+              </dd>
+            </div>
+            {isOverBudget && (
+              <div>
+                <span className="inline-block px-2 py-1 bg-red-100 text-red-700 text-sm rounded font-medium">
+                  Over budget
+                </span>
+              </div>
+            )}
+          </dl>
+        </div>
+
+        <div className="mt-6 pt-6 border-t">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-lg">Activities</h2>
+            <button
+              type="button"
+              onClick={() => { setEditingActivity(null); setShowActivityForm(true); }}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+            >
+              Add Activity
+            </button>
+          </div>
+          <ActivitiesList
+            activities={activities}
+            onEdit={handleEditActivity}
+            onDelete={(activity) => setDeletingActivity(activity)}
+          />
         </div>
 
         <div className="mt-6 flex items-center gap-2">
@@ -131,7 +211,7 @@ export function PlanDetailsPage() {
           </button>
           <button
             type="button"
-            onClick={() => setShowDeleteConfirm(true)}
+            onClick={() => setShowDeletePlanConfirm(true)}
             className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
           >
             Delete
@@ -140,13 +220,34 @@ export function PlanDetailsPage() {
       </div>
 
       <DeleteConfirmationDialog
-        open={showDeleteConfirm}
+        open={showDeletePlanConfirm}
         planName={plan.name}
-        onCancel={() => setShowDeleteConfirm(false)}
+        onCancel={() => setShowDeletePlanConfirm(false)}
         onConfirm={() => {
-          void onDelete();
+          void handleDeletePlan();
         }}
       />
+
+      {deletingActivity && (
+        <DeleteConfirmationDialog
+          open={true}
+          planName={deletingActivity.name}
+          onCancel={() => setDeletingActivity(null)}
+          onConfirm={() => {
+            void handleDeleteActivity();
+          }}
+        />
+      )}
+
+      {showActivityForm && (
+        <ActivityFormModal
+          activity={editingActivity ?? undefined}
+          planStartDate={plan.startDate}
+          planEndDate={plan.endDate}
+          onSubmit={handleActivitySubmit}
+          onCancel={() => { setShowActivityForm(false); setEditingActivity(null); }}
+        />
+      )}
     </div>
   );
 }
