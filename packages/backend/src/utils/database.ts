@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { logger } from '../middleware/logger';
+import { initializeVacationPlansTable } from './planDb';
 import { initializeUsersTable } from './userDb';
 
 let db: Database.Database | null = null;
@@ -13,6 +14,7 @@ export function getDatabase(dbPath?: string): Database.Database {
     logger.info(`Connecting to database at: ${databasePath}`);
     db = new Database(databasePath);
     db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
   }
   return db;
 }
@@ -29,6 +31,7 @@ export function initializeDatabase(dbPath?: string): void {
     )
   `);
   initializeUsersTable();
+  initializeVacationPlansTable();
   logger.info('Database schema initialized');
 }
 

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import authRoutes from './auth';
+import plansRoutes from './plans';
 
 const router = Router();
 
@@ -10,9 +11,9 @@ const router = Router();
 
 // Auth routes
 router.use('/auth', authRoutes);
+router.use('/plans', plansRoutes);
 
 // Future routes will be added here:
-// router.use('/plans', plansRoutes);
 // etc.
 
 export default router;
