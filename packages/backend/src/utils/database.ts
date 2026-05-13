@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { logger } from '../middleware/logger';
+import { initializeUsersTable } from './userDb';
 
 let db: Database.Database | null = null;
 
@@ -25,8 +26,7 @@ export function initializeDatabase(dbPath?: string): void {
   
   logger.info('Initializing database schema...');
   
-  // Create tables here when needed
-  // For now, just ensure database is ready
+  // Create migrations table
   database.exec(`
     CREATE TABLE IF NOT EXISTS _migrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,6 +34,9 @@ export function initializeDatabase(dbPath?: string): void {
       applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  
+  // Initialize users table
+  initializeUsersTable();
   
   logger.info('Database schema initialized');
 }
