@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import authRoutes from './auth';
 import plansRoutes from './plans';
+import dashboardRoutes from './dashboard';
 
 const router = Router();
 
@@ -12,6 +13,7 @@ const router = Router();
 // Auth routes
 router.use('/auth', authRoutes);
 router.use('/plans', plansRoutes);
+router.use('/dashboard', dashboardRoutes);
 
 // Future routes will be added here:
 // etc.

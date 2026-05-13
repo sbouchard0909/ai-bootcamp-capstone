@@ -58,3 +58,17 @@ export interface UpdatePlanData {
   description?: string;
   status?: PlanStatus;
 }
+
+export interface DashboardStatistics {
+  totalPlans: number;
+  totalBudget: number;
+  totalSpent: number;
+  plansByStatus: Record<string, number>;
+}
+
+export interface DashboardData {
+  upcomingPlans: VacationPlan[];
+  activePlans: VacationPlan[];
+  completedPlans: VacationPlan[];
+  statistics: DashboardStatistics;
+}
