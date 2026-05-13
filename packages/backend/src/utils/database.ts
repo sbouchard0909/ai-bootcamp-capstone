@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { logger } from '../middleware/logger';
+import { initializeActivitiesTable } from './activityDb';
 import { initializeVacationPlansTable } from './planDb';
 import { initializeUsersTable } from './userDb';
 
@@ -32,6 +33,7 @@ export function initializeDatabase(dbPath?: string): void {
   `);
   initializeUsersTable();
   initializeVacationPlansTable();
+  initializeActivitiesTable();
   logger.info('Database schema initialized');
 }
 

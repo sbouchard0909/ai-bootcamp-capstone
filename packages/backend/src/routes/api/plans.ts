@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response, Router } from 'express';
+import { ACTIVITY_CATEGORIES, Activity, ActivityCategory } from '../../models/Activity';
 import {
   VACATION_PLAN_STATUSES,
   VacationPlan,
@@ -8,10 +9,19 @@ import { authenticateToken } from '../../middleware/auth';
 import { AppError } from '../../middleware/errorHandler';
 import { sendSuccess } from '../../utils/response';
 import {
+  createActivity,
+  deleteActivityByIdAndPlanId,
+  findActivityByIdAndPlanId,
+  getActivitiesByPlanId,
+  getTotalActivityCostByPlanId,
+  updateActivityByIdAndPlanId,
+} from '../../utils/activityDb';
+import {
   createVacationPlan,
   deleteVacationPlanById,
   findVacationPlanById,
   getVacationPlansByUserId,
+  touchVacationPlanUpdatedAt,
   updateVacationPlanById,
 } from '../../utils/planDb';
 import { validateRequiredFields } from '../../utils/validation';
@@ -121,6 +131,132 @@ function assertOwnership(plan: VacationPlan, userId: string): void {
   }
 }
 
+function ensurePlanAccess(planId: string, userId: string): VacationPlan {
+  const plan = findVacationPlanById(planId);
+  if (!plan) {
+    throw new AppError('Plan not found', 404);
+  }
+
+  assertOwnership(plan, userId);
+  return plan;
+}
+
+function isValidTime(time: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
+}
+
+function validateActivityDateWithinPlan(date: string, plan: VacationPlan): void {
+  if (!isValidDateOnly(date)) {
+    throw new AppError('date must be valid ISO date (YYYY-MM-DD)', 400);
+  }
+
+  if (date < plan.startDate || date > plan.endDate) {
+    throw new AppError('Activity date must be within plan date range', 400);
+  }
+}
+
+function validateActivityCategory(category: unknown): category is ActivityCategory {
+  return typeof category === 'string' && ACTIVITY_CATEGORIES.includes(category as ActivityCategory);
+}
+
+function validateActivityTimeRange(startTime?: string, endTime?: string): void {
+  if (startTime !== undefined && !isValidTime(startTime)) {
+    throw new AppError('startTime must be valid HH:MM', 400);
+  }
+
+  if (endTime !== undefined && !isValidTime(endTime)) {
+    throw new AppError('endTime must be valid HH:MM', 400);
+  }
+
+  if (startTime && endTime && endTime <= startTime) {
+    throw new AppError('endTime must be after startTime', 400);
+  }
+}
+
+function validateCreateActivityPayload(body: Record<string, unknown>, plan: VacationPlan): void {
+  const { name, date, cost, category, startTime, endTime } = body;
+  const missingField = validateRequiredFields({ name, date, cost, category });
+  if (missingField) {
+    throw new AppError(missingField, 400);
+  }
+
+  if (typeof name !== 'string' || name.length > 200) {
+    throw new AppError('Name must be 200 characters or fewer', 400);
+  }
+
+  if (typeof cost !== 'number' || Number.isNaN(cost) || cost < 0) {
+    throw new AppError('Cost must be a non-negative number', 400);
+  }
+
+  if (!validateActivityCategory(category)) {
+    throw new AppError(
+      'category must be one of: dining, sightseeing, accommodation, transport, entertainment, other',
+      400
+    );
+  }
+
+  if (startTime !== undefined && typeof startTime !== 'string') {
+    throw new AppError('startTime must be valid HH:MM', 400);
+  }
+
+  if (endTime !== undefined && typeof endTime !== 'string') {
+    throw new AppError('endTime must be valid HH:MM', 400);
+  }
+
+  validateActivityDateWithinPlan(String(date), plan);
+  validateActivityTimeRange(
+    typeof startTime === 'string' ? startTime : undefined,
+    typeof endTime === 'string' ? endTime : undefined
+  );
+}
+
+function validateUpdateActivityPayload(
+  body: Record<string, unknown>,
+  plan: VacationPlan,
+  existing: Activity
+): void {
+  const merged = {
+    ...existing,
+    ...body,
+  };
+
+  if (merged.name === undefined || typeof merged.name !== 'string' || merged.name.length > 200) {
+    throw new AppError('Name must be 200 characters or fewer', 400);
+  }
+
+  if (
+    merged.cost === undefined ||
+    typeof merged.cost !== 'number' ||
+    Number.isNaN(merged.cost) ||
+    merged.cost < 0
+  ) {
+    throw new AppError('Cost must be a non-negative number', 400);
+  }
+
+  if (!validateActivityCategory(merged.category)) {
+    throw new AppError(
+      'category must be one of: dining, sightseeing, accommodation, transport, entertainment, other',
+      400
+    );
+  }
+
+  validateActivityDateWithinPlan(String(merged.date), plan);
+
+  const startTime = typeof merged.startTime === 'string' ? merged.startTime : undefined;
+  const endTime = typeof merged.endTime === 'string' ? merged.endTime : undefined;
+  validateActivityTimeRange(startTime, endTime);
+}
+
+function groupActivitiesByDate(activities: Activity[]): Record<string, Activity[]> {
+  return activities.reduce<Record<string, Activity[]>>((acc, activity) => {
+    if (!acc[activity.date]) {
+      acc[activity.date] = [];
+    }
+    acc[activity.date].push(activity);
+    return acc;
+  }, {});
+}
+
 router.use(authenticateToken);
 
 router.post('/', (req: Request, res: Response, next: NextFunction) => {
@@ -166,6 +302,143 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
 
     const plans = getVacationPlansByUserId(req.user.userId).map(withDuration);
     return sendSuccess(res, { plans }, 200);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:planId/activities', (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) {
+      throw new AppError('Authentication token is required', 401);
+    }
+
+    const plan = ensurePlanAccess(req.params.planId, req.user.userId);
+    validateCreateActivityPayload(req.body as Record<string, unknown>, plan);
+
+    const payload = req.body as {
+      name: string;
+      date: string;
+      startTime?: string;
+      endTime?: string;
+      cost: number;
+      category: ActivityCategory;
+      description?: string;
+      location?: string;
+    };
+
+    const activity = createActivity({
+      planId: plan.id,
+      name: payload.name,
+      date: payload.date,
+      startTime: payload.startTime,
+      endTime: payload.endTime,
+      cost: payload.cost,
+      category: payload.category,
+      description: payload.description,
+      location: payload.location,
+    });
+
+    touchVacationPlanUpdatedAt(plan.id);
+
+    return sendSuccess(res, { activity }, 201);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:planId/activities', (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) {
+      throw new AppError('Authentication token is required', 401);
+    }
+
+    const plan = ensurePlanAccess(req.params.planId, req.user.userId);
+    const activities = getActivitiesByPlanId(plan.id);
+    const groupedByDate = groupActivitiesByDate(activities);
+    const totalCost = getTotalActivityCostByPlanId(plan.id);
+
+    return sendSuccess(res, { activities, groupedByDate, totalCost }, 200);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:planId/activities/:activityId', (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) {
+      throw new AppError('Authentication token is required', 401);
+    }
+
+    const plan = ensurePlanAccess(req.params.planId, req.user.userId);
+    const activity = findActivityByIdAndPlanId(req.params.activityId, plan.id);
+    if (!activity) {
+      throw new AppError('Activity not found', 404);
+    }
+
+    return sendSuccess(res, { activity }, 200);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/:planId/activities/:activityId', (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) {
+      throw new AppError('Authentication token is required', 401);
+    }
+
+    const plan = ensurePlanAccess(req.params.planId, req.user.userId);
+    const existing = findActivityByIdAndPlanId(req.params.activityId, plan.id);
+    if (!existing) {
+      throw new AppError('Activity not found', 404);
+    }
+
+    const sanitizedUpdates = { ...req.body } as Record<string, unknown>;
+    delete sanitizedUpdates.id;
+    delete sanitizedUpdates.planId;
+
+    validateUpdateActivityPayload(sanitizedUpdates, plan, existing);
+
+    const updated = updateActivityByIdAndPlanId(req.params.activityId, plan.id, {
+      name: sanitizedUpdates.name as string | undefined,
+      date: sanitizedUpdates.date as string | undefined,
+      startTime: sanitizedUpdates.startTime as string | null | undefined,
+      endTime: sanitizedUpdates.endTime as string | null | undefined,
+      cost: sanitizedUpdates.cost as number | undefined,
+      category: sanitizedUpdates.category as ActivityCategory | undefined,
+      description: sanitizedUpdates.description as string | undefined,
+      location: sanitizedUpdates.location as string | undefined,
+    });
+
+    if (!updated) {
+      throw new AppError('Activity not found', 404);
+    }
+
+    touchVacationPlanUpdatedAt(plan.id);
+
+    return sendSuccess(res, { activity: updated }, 200);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/:planId/activities/:activityId', (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) {
+      throw new AppError('Authentication token is required', 401);
+    }
+
+    const plan = ensurePlanAccess(req.params.planId, req.user.userId);
+    const existing = findActivityByIdAndPlanId(req.params.activityId, plan.id);
+    if (!existing) {
+      throw new AppError('Activity not found', 404);
+    }
+
+    deleteActivityByIdAndPlanId(req.params.activityId, plan.id);
+    touchVacationPlanUpdatedAt(plan.id);
+
+    return res.status(204).send();
   } catch (error) {
     next(error);
   }
