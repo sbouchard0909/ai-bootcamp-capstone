@@ -155,3 +155,14 @@ export function deleteVacationPlanById(id: string): boolean {
   const result = stmt.run(id);
   return result.changes > 0;
 }
+
+export function touchVacationPlanUpdatedAt(id: string): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    UPDATE vacation_plans
+    SET updatedAt = ?
+    WHERE id = ?
+  `);
+
+  stmt.run(new Date().toISOString(), id);
+}

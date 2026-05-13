@@ -88,7 +88,9 @@ export function getAllUsers(): User[] {
   const db = getDatabase();
   
   const stmt = db.prepare(`
-    SELECT * FROM users ORDER BY createdAt DESC
+    SELECT *
+    FROM users
+    ORDER BY rowid ASC
   `);
   
   return stmt.all() as User[];
