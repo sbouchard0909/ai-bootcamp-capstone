@@ -5,7 +5,7 @@ import { sanitizeUser } from '../../models/User';
 import { isValidEmail, isValidPassword, validateRequiredFields } from '../../utils/validation';
 import { AppError } from '../../middleware/errorHandler';
 import { sendSuccess } from '../../utils/response';
-import { authenticateToken, signAuthToken, AuthenticatedRequest } from '../../middleware/auth';
+import { authenticateToken, signAuthToken } from '../../middleware/auth';
 
 const router = Router();
 const SALT_ROUNDS = 10;
@@ -54,10 +54,9 @@ router.post('/logout', (_req: Request, res: Response) => {
 
 router.get('/me', authenticateToken, (req: Request, res: Response, next: NextFunction) => {
   try {
-    const authedRequest = req as AuthenticatedRequest;
-    if (!authedRequest.user) throw new AppError('Authentication token is required', 401);
+    if (!req.user) throw new AppError('Authentication token is required', 401);
 
-    const user = findUserById(authedRequest.user.userId);
+    const user = findUserById(req.user.userId);
     if (!user) throw new AppError('User not found', 401);
 
     return sendSuccess(res, { user: sanitizeUser(user) }, 200);

@@ -3,17 +3,12 @@ import jwt, { JwtPayload } from 'jsonwebtoken';
 import { AppError } from './errorHandler';
 import { TokenPayload } from '../models/User';
 
-export interface AuthenticatedRequest extends Request {
-  user?: TokenPayload;
-}
-
 function getJwtSecret(): string {
   return process.env.JWT_SECRET || 'dev-jwt-secret';
 }
 
 export function authenticateToken(req: Request, _res: Response, next: NextFunction): void {
-  const request = req as AuthenticatedRequest;
-  const authHeader = request.headers.authorization;
+  const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     next(new AppError('Authentication token is required', 401));
@@ -24,7 +19,7 @@ export function authenticateToken(req: Request, _res: Response, next: NextFuncti
 
   try {
     const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload & TokenPayload;
-    request.user = {
+    req.user = {
       userId: decoded.userId,
       email: decoded.email,
     };

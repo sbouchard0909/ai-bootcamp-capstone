@@ -21,7 +21,6 @@ export function initializeDatabase(dbPath?: string): void {
   const database = getDatabase(dbPath);
 
   logger.info('Initializing database schema...');
-
   database.exec(`
     CREATE TABLE IF NOT EXISTS _migrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,9 +28,7 @@ export function initializeDatabase(dbPath?: string): void {
       applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-
   initializeUsersTable();
-
   logger.info('Database schema initialized');
 }
 
