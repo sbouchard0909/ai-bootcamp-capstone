@@ -3,20 +3,14 @@ import { render, screen } from '@testing-library/react';
 import App from '../src/App';
 
 describe('App', () => {
-  it('should render without crashing', () => {
+  it('renders application title', () => {
     render(<App />);
     expect(screen.getByText('Travel Planning App')).toBeInTheDocument();
   });
 
-  it('should display app title', () => {
+  it('shows login/register links when unauthenticated', () => {
     render(<App />);
-    const heading = screen.getByRole('heading', { name: /travel planning app/i });
-    expect(heading).toBeInTheDocument();
-  });
-
-  it('should display button with initial count', () => {
-    render(<App />);
-    const button = screen.getByRole('button', { name: /count is 0/i });
-    expect(button).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Login' })).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Register' })[0]).toBeInTheDocument();
   });
 });

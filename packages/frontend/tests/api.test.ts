@@ -1,69 +1,46 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { api, setAuthToken, clearAuthToken } from '../src/services/api';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { api, setAuthToken, clearAuthToken, setUnauthorizedHandler } from '../src/services/api';
 
 describe('API Service', () => {
   beforeEach(() => {
-    // Clear auth token before each test
     clearAuthToken();
+    setUnauthorizedHandler(() => undefined);
+    vi.clearAllMocks();
   });
 
-  describe('API Instance', () => {
-    it('should be configured with base URL', () => {
-      expect(api.defaults.baseURL).toBeDefined();
-      expect(typeof api.defaults.baseURL).toBe('string');
-    });
-
-    it('should have timeout configured', () => {
-      expect(api.defaults.timeout).toBe(10000);
-    });
-
-    it('should have headers configured', () => {
-      expect(api.defaults.headers).toBeDefined();
-    });
+  it('creates API instance with base URL and timeout', () => {
+    expect(api.defaults.baseURL).toBeDefined();
+    expect(api.defaults.timeout).toBe(10000);
   });
 
-  describe('setAuthToken', () => {
-    it('should set authorization header when token provided', () => {
-      const token = 'test-token-123';
-      setAuthToken(token);
-      
-      expect(api.defaults.headers.common['Authorization']).toBe(`Bearer ${token}`);
-    });
+  it('sets and clears auth token header', () => {
+    setAuthToken('test-token');
+    expect(api.defaults.headers.common.Authorization).toBe('Bearer test-token');
 
-    it('should remove auth header when empty token provided', () => {
-      // First set a token
-      setAuthToken('test-token');
-      expect(api.defaults.headers.common['Authorization']).toBeDefined();
-      
-      // Then set empty token
-      setAuthToken('');
-      expect(api.defaults.headers.common['Authorization']).toBeUndefined();
-    });
+    clearAuthToken();
+    expect(api.defaults.headers.common.Authorization).toBeUndefined();
   });
 
-  describe('clearAuthToken', () => {
-    it('should remove authorization header', () => {
-      // First set a token
-      setAuthToken('test-token');
-      expect(api.defaults.headers.common['Authorization']).toBeDefined();
-      
-      // Then clear it
-      clearAuthToken();
-      expect(api.defaults.headers.common['Authorization']).toBeUndefined();
-    });
-
-    it('should be safe to call when no token is set', () => {
-      expect(() => clearAuthToken()).not.toThrow();
-    });
+  it('has request and response interceptors configured', () => {
+    expect(api.interceptors.request.handlers.length).toBeGreaterThan(0);
+    expect(api.interceptors.response.handlers.length).toBeGreaterThan(0);
   });
 
-  describe('Interceptors', () => {
-    it('should have request interceptor configured', () => {
-      expect(api.interceptors.request.handlers.length).toBeGreaterThan(0);
-    });
+  it('triggers unauthorized handler on 401 responses', async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
 
-    it('should have response interceptor configured', () => {
-      expect(api.interceptors.response.handlers.length).toBeGreaterThan(0);
-    });
+    const interceptor = api.interceptors.response.handlers[0];
+    if (!interceptor || typeof interceptor.rejected !== 'function') {
+      throw new Error('response interceptor missing');
+    }
+
+    const mockError = {
+      response: { status: 401, data: { error: { message: 'unauthorized' } } },
+      message: 'Request failed',
+    };
+
+    await expect(interceptor.rejected(mockError)).rejects.toBeDefined();
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });
