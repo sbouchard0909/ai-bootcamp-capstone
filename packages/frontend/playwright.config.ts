@@ -19,18 +19,9 @@ export default defineConfig({
     },
   ],
 
-  webServer: [
-    {
-      command: 'npm run dev --workspace=backend',
-      url: 'http://localhost:5000/health',
-      reuseExistingServer: !process.env.CI,
-      cwd: '../..',
-    },
-    {
-      command: 'npm run dev --workspace=frontend',
-      url: 'http://localhost:3000',
-      reuseExistingServer: !process.env.CI,
-      cwd: '../..',
-    },
-  ],
+  webServer: {
+    command: 'cd ../.. && npm run dev',
+    url: 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+  },
 });
